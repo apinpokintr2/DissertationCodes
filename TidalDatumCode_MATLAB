@@ -1,7 +1,7 @@
 %% -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 % Load data
 % - - - - - - - - - - - - - - - - - - - - - - - -
-tData = load('/Users/anesse/Library/CloudStorage/OneDrive-UniversityCollegeLondon/Dissertation/lowestoftTidemat.mat');
+tData = load('lowestoftTidemat.mat');
 tTable = tData.lowestoftTidemat;
 
 tideVars = {'DateTime';'Residual';'PredicedTide'};
