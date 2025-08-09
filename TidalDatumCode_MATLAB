@@ -1,0 +1,85 @@
+%% -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+% Load data
+% - - - - - - - - - - - - - - - - - - - - - - - -
+tData = load('/Users/anesse/Library/CloudStorage/OneDrive-UniversityCollegeLondon/Dissertation/lowestoftTidemat.mat');
+tTable = tData.lowestoftTidemat;
+
+tideVars = {'DateTime';'Residual';'PredicedTide'};
+
+rawDateTime = tTable.(tideVars{1});
+residual = tTable.(tideVars{2});
+predictedTide = tTable.(tideVars{3});
+
+dt = datetime(rawDateTime, 'InputFormat', 'dd-MM-yyyy HH:mm');
+dtNum = datenum(dt);
+
+tideData = [dtNum(:), double(residual(:)), double(predictedTide(:))];
+
+tideDateN = tideData(:,1);
+tideDateV = datevec(tideDateN);
+dt = datetime(tideDateN, 'ConvertFrom', 'datenum');
+% -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+%% -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+% Tidal analysis
+% - - - - - - - - - - - - - - - - - - - - - - - -
+% Convert from CD to OD (which topo is measured in)
+% OD at Lowestoft is 1.5m CD
+% Original tide data are relative to CD
+obsOD = tTable.WaterLevel-1.5;
+
+validIdx = obsOD <= 3 & obsOD >= -2;
+filteredDateN = tideDateN(validIdx);
+filteredObsOD = obsOD(validIdx);
+
+% Using utide and tidalpeaks
+coef = ut_solv(tideDateN,obsOD,[],51.990558,'auto');
+[predOD,~] = ut_reconstr(tideDateN,coef);
+[hhwss,mhws,mhhw,mhw,msl,mtl,mlw,mllw,mlws,F] = tp_coefdatums(coef);
+
+% Tide range
+STRu = 2*(coef.A(1)+coef.A(2));
+NTRu = 2*(coef.A(1)-coef.A(2));
+% -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+%% -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+% Tide plot
+% - - - - - - - - - - - - - - - - - - - - - - - -
+yyaxis left
+plot(dt,obsOD,'-k','LineWidth',0.75)
+hold on,plot(dt,predOD,':k','LineWidth',1)
+hold on,plot([datetime(2011,01,01,0,0,0) datetime(2012,01,01,0,0,0)],...
+    [mhws mhws],'--','Color',[0.1 0.1 0.5],'LineWidth',0.5)
+hold on,plot([datetime(2011,01,01,0,0,0) datetime(2012,01,01,0,0,0)],...
+    [mhw mhw],'-.','Color',[0.4 0.4 0.8],'LineWidth',0.5)
+hold on,plot([datetime(2011,01,01,0,0,0) datetime(2012,01,01,0,0,0)],...
+    [mlw mlw],'-.','Color',[0.4 0.4 0.8],'LineWidth',0.5)
+hold on,plot([datetime(2011,01,01,0,0,0) datetime(2012,01,01,0,0,0)],...
+    [mlws mlws],'-.','Color',[0.4 0.4 0.8],'LineWidth',0.5)
+axis tight
+grid on
+ylim([-2.5 5])
+ylabel('Tide level [m OD]')
+xlim([datetime(2011,01,01,0,0,0) datetime(2012,01,01,0,0,0)])
+
+yyaxis right
+plot(dt,tideData(:,2),'-r','LineWidth',0.5)
+ylim([-5 2.5])
+ylabel('Surge [m]')
+xlim([datetime(2011,01,01,0,0,0) datetime(2012,01,01,0,0,0)])
+
+set(gca,'Position',[0.1 0.075 0.85 0.85])
+legend('Measured tide','Predicted tide','MHWS','MHW','MLWS','MLW','Surge level','Orientation','horizontal','Location','northoutside')
+legend boxoff
+
+set(gcf,'PaperUnits','points','PaperSize',[600 400],'PaperPosition',[0 0 600 400]);
+print('-dpng','-r300','LowestoftTidePlot_Dec2013.png')
+% close all
+
+mhws
+mhw
+mlws
+mlw
+
+%% -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+HAT_estimate = max(predictedTide)
+HAT_estimate
+%% -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
