@@ -1,7 +1,7 @@
 library(tidyverse)
 library(ggplot2)
 
-data <- read.csv("/Users/anesse/Library/CloudStorage/OneDrive-UniversityCollegeLondon/Dissertation/analysis/PCA_data2.csv")
+data <- read.csv("data.csv")
 
 vars <- data %>%
   select(
