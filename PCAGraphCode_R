@@ -1,0 +1,204 @@
+library(tidyverse)
+library(ggplot2)
+library(scales)
+
+data <- read.csv("PCA_data2.csv")
+
+data$Site <- substr(data$ID, 1, 1)
+
+#Change "B" to the site name label
+data_filtered <- data %>% filter(Site == "B")
+
+pca_vars <- data_filtered %>%
+  select(
+    Sea2ForeshoreBreak,
+    SeaWater2LagoonWater,
+    ForeshoreBreak2Vegetation,
+    Vegetation2Vegetation,
+    SurgeMHWS,
+    Berm1Berm2,
+    Berm2Berm3,
+    bermNumber,
+    BarrierLength,
+    FullBreach,
+    PartialBreach,
+    AnyBreach,
+    MaxCHC,
+    MinCA,
+    MinCAPosition,
+    MaxSC,
+    MinSC,
+    MaxRC
+  )
+
+#Rename labels as needed
+pca_vars <- pca_vars %>%
+  rename(
+    BarrierWidth = SeaWater2LagoonWater,
+    Sea2Foreshore = Sea2ForeshoreBreak,
+    Foreshore2Veg = ForeshoreBreak2Vegetation,
+    Vegetation = Vegetation2Vegetation,
+    Surge = SurgeMHWS,
+    Berm12 = Berm1Berm2,
+    Berm23 = Berm2Berm3,
+    BermNum = bermNumber,
+    BarrierLen = BarrierLength,
+    Breach = AnyBreach,
+    MinCAPos = MinCAPosition
+  )
+
+pca_vars <- pca_vars %>% mutate(across(where(is.character), as.numeric))
+
+valid_rows <- complete.cases(pca_vars) & apply(pca_vars, 1, function(row) all(is.finite(row)))
+pca_vars_clean <- pca_vars[valid_rows, ]
+data_clean <- data_filtered[valid_rows, ]
+
+pca_scaled <- scale(pca_vars_clean)
+pca_result <- prcomp(pca_scaled, center = TRUE)
+
+colors <- case_when(
+  data_clean$AnyBreach == 0 ~ "gray70",      # No breach
+  data_clean$AnyBreach == 1 ~ "orange",      # Partial breach
+  data_clean$AnyBreach == 2 ~ "blue",        # Full breach
+  TRUE ~ "black"
+)
+
+pca_df <- as.data.frame(pca_result$x)
+pca_df$Color <- colors
+pca_df$AnyBreach <- factor(data_clean$AnyBreach, levels = c(0,1,2))
+
+loadings_plot1 <- as.data.frame(pca_result$rotation[,1:2])
+loadings_plot1$variable <- rownames(loadings_plot1)
+
+arrow_scale <- 7
+loadings_plot1 <- loadings_plot1 %>%
+  mutate(
+    PC1 = PC1 * arrow_scale,
+    PC2 = PC2 * arrow_scale,
+    #Adjust specific if labels on plot overlap. Can add or remove variables as needed
+    nudge_x = case_when(
+      variable == "MinCAPos" ~ 0.5,  # Example: nudge MinCAPos right
+      variable == "MaxCHC" ~ -0.3,   # Example: nudge MaxCHC left
+      TRUE ~ 0
+    ),
+    nudge_y = case_when(
+      variable == "MinCAPos" ~ 0.3,  # Example: nudge MinCAPos up
+      variable == "MaxCHC" ~ 0.2,    # Example: nudge MaxCHC up
+      TRUE ~ 0
+    )
+  )
+
+get_hull <- function(df) df[chull(df$PC1, df$PC2), ]
+
+hull_partial <- pca_df %>% filter(AnyBreach == 1) %>% get_hull()
+hull_full <- pca_df %>% filter(AnyBreach == 2) %>% get_hull()
+
+ggplot(pca_df, aes(x = PC2, y = PC1)) +
+  geom_polygon(data = hull_partial, aes(x = PC2, y = PC1), fill = "orange", alpha = 0.15) +
+  geom_polygon(data = hull_full, aes(x = PC2, y = PC1), fill = "blue", alpha = 0.15) +
+  geom_hline(yintercept = 0, color = "black", size = 0.3) +
+  geom_vline(xintercept = 0, color = "black", size = 0.3) +
+  geom_point(aes(color = Color), size = 2) +
+  geom_segment(data = loadings_plot1,
+               aes(x = 0, y = 0, xend = PC2, yend = PC1),
+               arrow = arrow(length = unit(0.3, "cm")),
+               color = "black", alpha = 0.8) +
+  geom_text(data = loadings_plot1,
+            aes(x = PC2 + nudge_x, y = PC1 + nudge_y, label = variable),
+            color = "black", size = 4) +
+  scale_color_identity(guide = "legend",
+                       labels = c("No Breach", "Partial Breach", "Full Breach"),
+                       breaks = c("gray70", "orange", "blue"),
+                       name = "Breach Type") +
+  labs(
+    title = "PCA of Environmental Variables",
+    x = "PC2", y = "PC1"
+  ) +
+  coord_equal() +
+  theme_minimal() +
+  theme(
+    plot.margin = margin(t = 10, r = 10, b = 20, l = 20),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    plot.title = element_text(size = 0),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12)
+  )
+
+options(scipen = 999)
+
+# Eigenvalues and variance table
+eigenvalues <- pca_result$sdev^2
+prop_var <- eigenvalues / sum(eigenvalues)
+cum_var <- cumsum(prop_var)
+
+pca_summary <- data.frame(
+  PC = paste0("PC", 1:length(eigenvalues)),
+  Eigenvalue = round(eigenvalues, 2),
+  `Variance (%)` = round(prop_var * 100, 1),
+  `Cumulative Variance (%)` = round(cum_var * 100, 1)
+)
+
+print(pca_summary)
+
+# PCA Loadings table
+loadings_table <- as.data.frame(round(pca_result$rotation, 2))
+loadings_table$Variable <- rownames(loadings_table)
+loadings_table <- loadings_table %>% select(Variable, everything())
+
+print(loadings_table)
+
+loadings_plot2 <- as.data.frame(pca_result$rotation[,1:2])
+loadings_plot2$Variable <- rownames(loadings_plot2)
+
+loadings_plot2 <- loadings_plot2 %>%
+  mutate(
+    PC1 = PC1 * 5,
+    PC2 = PC2 * 5,
+    #Adjust specific if labels on plot overlap. Can add or remove variables as needed.
+    nudge_x = case_when(
+      Variable == "MinCAPos" ~ -0.3,
+      Variable == "MaxCHC" ~ 0.3,
+      Variable == "BarrierWidth" ~ 0,
+      TRUE ~ 0
+    ),
+    nudge_y = case_when(
+      Variable == "MinCAPos" ~ 0.2,
+      Variable == "MaxCHC" ~ -0.2,
+      Variable == "BarrierWidth" ~ -0.15,
+      TRUE ~ 0
+    )
+  )
+
+x_range <- range(loadings_plot2$PC2)
+y_range <- range(loadings_plot2$PC1)
+
+x_pad <- diff(x_range) * 0.2
+y_pad <- diff(y_range) * 0.2
+
+x_lim <- c(x_range[1] - x_pad, x_range[2] + x_pad)
+y_lim <- c(y_range[1] - y_pad, y_range[2] + y_pad)
+
+# PCA Loadings graph
+ggplot(loadings_plot2, aes(x = PC2, y = PC1)) +
+  geom_hline(yintercept = 0, color = "black", size = 0.3) +
+  geom_vline(xintercept = 0, color = "black", size = 0.3) +
+  geom_point(color = "black", size = 3) +
+  geom_text(
+    aes(x = PC2 + nudge_x, y = PC1 + nudge_y, label = Variable),
+    hjust = -0.1, vjust = -0.1, size = 5
+  ) +
+  labs(
+    x = paste0("PC2 (", round(summary(pca_result)$importance[2, 2] * 100, 1), "%)"),
+    y = paste0("PC1 (", round(summary(pca_result)$importance[2, 1] * 100, 1), "%)")
+  ) +
+  xlim(x_lim) +
+  ylim(y_lim) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 16),
+    plot.title = element_text(size = 0),
+    plot.margin = margin(30, 60, 30, 60)
+  )
+
